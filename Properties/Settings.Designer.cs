@@ -33,15 +33,15 @@
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("400, 350")]
-        public global::System.Drawing.Size FullSize
+        public global::System.Drawing.Size UnfoldedSize
         {
             get
             {
-                return ((global::System.Drawing.Size)(this["FullSize"]));
+                return ((global::System.Drawing.Size)(this["UnfoldedSize"]));
             }
             set
             {
-                this["FullSize"] = value;
+                this["UnfoldedSize"] = value;
             }
         }
 

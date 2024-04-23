@@ -167,7 +167,7 @@ public class ShellApplication
 
 namespace DropTransfer
 {
-    class DpiFactor
+    public class DpiFactor
     {
         private float scaling;
         public DpiFactor(float scale)
