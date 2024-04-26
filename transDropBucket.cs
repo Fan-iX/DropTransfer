@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.Reflection;
 using ShellApp;
+using System.Windows.Forms.VisualStyles;
 
 
 namespace DropTransfer
@@ -16,12 +17,26 @@ namespace DropTransfer
     public class Global
     {
         public static ShellContextMenu ctxMnu = new ShellContextMenu();
-        public static DragDropEffects dragEffect = DragDropEffects.All;
         public static ImageList imgList = new ImageList();
     }
 
     public class transDropBucket : PocketForm
     {
+        private DragDropEffects _dragEffect = DragDropEffects.All;
+        public DragDropEffects DragEffect
+        {
+            get => _dragEffect;
+            set
+            {
+                _dragEffect = value;
+                if (value == DragDropEffects.All)
+                    Text = "拖放中转站 [自动]";
+                else if (value == DragDropEffects.Copy)
+                    Text = "拖放中转站 [复制]";
+                else if (value == DragDropEffects.Move)
+                    Text = "拖放中转站 [移动]";
+            }
+        }
         private BucketTabControl tc = new BucketTabControl()
         {
             Dock = DockStyle.Fill,
@@ -31,14 +46,20 @@ namespace DropTransfer
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            List<(string,List<string>)> history = tc.TabPages.Cast<BucketTabPage>().Select(
+                x => new ValueTuple<string, List<string>>(x.Name, x.BucketListView.Items.Cast<ListViewItem>().Select(y => y.Name).ToList())
+            ).Where(l => l.Item2.Count > 0).ToList();
             UnfoldedSize = new Size(this.ClientSize.Width, Math.Max(this.ClientSize.Height, 150 * DpiScale));
+            Properties.Settings.Default.SelectedIndex = tc.SelectedIndex;
             Properties.Settings.Default.UnfoldedSize = this.UnfoldedSize;
             Properties.Settings.Default.WindowLocation = this.Location;
+            Properties.Settings.Default.DragEffect = this.DragEffect;
+            Properties.Settings.Default.History = history;
             Properties.Settings.Default.Save();
             base.OnFormClosing(e);
         }
 
-        protected void ResizeControl()
+        private void ResizeControl()
         {
             Global.imgList.ImageSize = new Size(
                 16 * DpiScale,
@@ -68,9 +89,9 @@ namespace DropTransfer
 
         public transDropBucket()
         {
-            Text = "拖放中转站 [自动]";
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(transDropBucket));
             UnfoldedSize = Properties.Settings.Default.UnfoldedSize;
+            DragEffect = Properties.Settings.Default.DragEffect;
 
             ClientSize = UnfoldedSize;
             MinimumSize = new Size(150 * DpiScale, 150 * DpiScale);
@@ -101,7 +122,21 @@ namespace DropTransfer
                 Location = Properties.Settings.Default.WindowLocation;
                 ClientSize = Properties.Settings.Default.UnfoldedSize;
             });
+            List<(string,List<string>)> history = Properties.Settings.Default.History;
+            int index = Properties.Settings.Default.SelectedIndex;
 
+            if (history.Count > 0)
+            {
+                tc.CreatePages(history);
+                tc.SelectedIndex = index;
+            }
+            else
+            {
+                IntPtr h = tc.Handle;
+                BucketTabPage tp = new BucketTabPage();
+                tc.TabPages.Insert(0, tp);
+                tc.SelectedIndex = 0;
+            }
             Controls.Add(tc);
             ResumeLayout(false);
 
@@ -111,17 +146,6 @@ namespace DropTransfer
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-
-        public void OnMouseEnterWindow()
-        {
-            if (Foldable) Unfold();
-        }
-
-        public void OnMouseLeaveWindow()
-        {
-            if (Foldable) Fold();
         }
     }
 
@@ -164,7 +188,7 @@ namespace DropTransfer
                 foreach (ListViewItem item in SelectedItems)
                     paths.Add(item.Name);
                 DataObject fileData = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                DoDragDrop(fileData, Global.dragEffect);
+                DoDragDrop(fileData, (FindForm() as transDropBucket).DragEffect);
             });
             DragDrop += new DragEventHandler((object sender, DragEventArgs e) =>
             {
@@ -258,6 +282,17 @@ namespace DropTransfer
         public void AddItems(string[] paths)
         {
             if (paths == null || paths.Length == 0) return;
+            BeginUpdate();
+            foreach (string path in paths)
+                AddItem(path);
+            EndUpdate();
+            Refresh();
+            (Parent as BucketTabPage).SetName(Parent.Name);
+        }
+
+        public void AddItems(List<string> paths)
+        {
+            if (paths == null || paths.Count == 0) return;
             BeginUpdate();
             foreach (string path in paths)
                 AddItem(path);
@@ -529,21 +564,13 @@ namespace DropTransfer
 
             ContextMenuStrip.Items.Add("切换拖放模式").Click += new EventHandler((object sender, EventArgs e) =>
             {
-                if (Global.dragEffect == DragDropEffects.All)
-                {
-                    Global.dragEffect = DragDropEffects.Copy;
-                    FindForm().Text = "拖放中转站 [复制]";
-                }
-                else if (Global.dragEffect == DragDropEffects.Copy)
-                {
-                    Global.dragEffect = DragDropEffects.Move;
-                    FindForm().Text = "拖放中转站 [移动]";
-                }
-                else if (Global.dragEffect == DragDropEffects.Move)
-                {
-                    Global.dragEffect = DragDropEffects.All;
-                    FindForm().Text = "拖放中转站 [自动]";
-                }
+                transDropBucket form = FindForm() as transDropBucket;
+                if (form.DragEffect == DragDropEffects.All)
+                    form.DragEffect = DragDropEffects.Copy;
+                else if (form.DragEffect == DragDropEffects.Copy)
+                    form.DragEffect = DragDropEffects.Move;
+                else if (form.DragEffect == DragDropEffects.Move)
+                    form.DragEffect = DragDropEffects.All;
             });
         }
 
@@ -572,7 +599,6 @@ namespace DropTransfer
             Dock = DockStyle.Fill;
             AllowDrop = true;
 
-            TabPages.Add(new BucketTabPage());
             TabPages.Add(tpPlus);
 
             DragEventHandler tpDragDropExtra = null;
@@ -644,7 +670,7 @@ namespace DropTransfer
                         if (paths.Count > 0)
                         {
                             DataObject fileData = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                            DoDragDrop(fileData, Global.dragEffect);
+                            DoDragDrop(fileData, (FindForm() as transDropBucket).DragEffect);
                         }
                         else
                         {
@@ -725,7 +751,25 @@ namespace DropTransfer
                     targetTab.BucketListView.AddItems(paths);
                 }
             });
+        }
 
+        public void CreatePages(List<(string,List<string>)> data)
+        {
+            foreach (var tab in data)
+            {
+                CreatePage(tab.Item2, tab.Item1);
+            }
+        }
+
+        public void CreatePage(List<string> paths, string name = "")
+        {
+            IntPtr h = Handle;
+            BucketTabPage tp = new BucketTabPage(){
+                Name = name
+            };
+            tp.BucketListView.AddItems(paths);
+            TabPages.Insert(TabPages.Count - 1, tp);
+            SelectedTab = tp;
         }
     }
 }

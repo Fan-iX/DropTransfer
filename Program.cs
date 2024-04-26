@@ -42,7 +42,8 @@ namespace DropTransfer
                     case WM_MOUSEMOVE:
                         if (mouseOut)
                         {
-                            browser.OnMouseEnterWindow();
+                            if (browser.Foldable)
+                                browser.Unfold();
                             mouseOut = false;
                         }
                         break;
@@ -50,7 +51,7 @@ namespace DropTransfer
                     case WM_MOUSELEAVE:
                         if (!browser.Bounds.Contains(Control.MousePosition))
                         {
-                            browser.OnMouseLeaveWindow();
+                            if (browser.Foldable) browser.Fold();
                             mouseOut = true;
                         }
                         break;

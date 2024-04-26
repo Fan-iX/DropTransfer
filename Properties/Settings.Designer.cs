@@ -1,4 +1,7 @@
-﻿namespace DropTransfer.Properties
+﻿using System;
+using System.Collections.Generic;
+
+namespace DropTransfer.Properties
 {
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "16.3.0.0")]
@@ -47,16 +50,46 @@
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("")]
-        public global::System.Collections.Generic.List<string> Favorites
+        [global::System.Configuration.DefaultSettingValueAttribute("All")]
+        public global::System.Windows.Forms.DragDropEffects DragEffect
         {
             get
             {
-                return ((global::System.Collections.Generic.List<string>)(this["Favorites"]));
+                return ((global::System.Windows.Forms.DragDropEffects)(this["DragEffect"]));
             }
             set
             {
-                this["Favorites"] = value;
+                this["DragEffect"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public List<(string, List<string>)> History
+        {
+            get
+            {
+                return ((List<(string, List<string>)>)(this["History"]));
+            }
+            set
+            {
+                this["History"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("0")]
+        public int SelectedIndex
+        {
+            get
+            {
+                return ((int)(this["SelectedIndex"]));
+            }
+            set
+            {
+                this["SelectedIndex"] = value;
             }
         }
     }
