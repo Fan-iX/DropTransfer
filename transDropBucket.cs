@@ -46,7 +46,7 @@ namespace DropTransfer
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            List<(string,List<string>)> history = tc.TabPages.Cast<BucketTabPage>().Select(
+            List<(string, List<string>)> history = tc.TabPages.Cast<BucketTabPage>().Select(
                 x => new ValueTuple<string, List<string>>(x.Name, x.BucketListView.Items.Cast<ListViewItem>().Select(y => y.Name).ToList())
             ).Where(l => l.Item2.Count > 0).ToList();
             UnfoldedSize = new Size(this.ClientSize.Width, Math.Max(this.ClientSize.Height, 150 * DpiScale));
@@ -122,7 +122,7 @@ namespace DropTransfer
                 Location = Properties.Settings.Default.WindowLocation;
                 ClientSize = Properties.Settings.Default.UnfoldedSize;
             });
-            List<(string,List<string>)> history = Properties.Settings.Default.History;
+            List<(string, List<string>)> history = Properties.Settings.Default.History;
             int index = Properties.Settings.Default.SelectedIndex;
 
             if (history.Count > 0)
@@ -501,10 +501,11 @@ namespace DropTransfer
 
         override public void Remove()
         {
+            BucketTabPage tp = ListView.Parent as BucketTabPage;
             watcher.EnableRaisingEvents = false;
             watcher.Dispose();
-            ListView.Parent.Text = (ListView.Items.Count - 1).ToString();
             base.Remove();
+            tp.SetName(tp.Name);
         }
     }
 
@@ -753,7 +754,7 @@ namespace DropTransfer
             });
         }
 
-        public void CreatePages(List<(string,List<string>)> data)
+        public void CreatePages(List<(string, List<string>)> data)
         {
             foreach (var tab in data)
             {
@@ -764,7 +765,8 @@ namespace DropTransfer
         public void CreatePage(List<string> paths, string name = "")
         {
             IntPtr h = Handle;
-            BucketTabPage tp = new BucketTabPage(){
+            BucketTabPage tp = new BucketTabPage()
+            {
                 Name = name
             };
             tp.BucketListView.AddItems(paths);
