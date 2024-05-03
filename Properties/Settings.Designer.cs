@@ -92,5 +92,35 @@ namespace DropTransfer.Properties
                 this["SelectedIndex"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("16")]
+        public int IconSize
+        {
+            get
+            {
+                return ((int)(this["IconSize"]));
+            }
+            set
+            {
+                this["IconSize"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("true")]
+        public bool UseThumbnail
+        {
+            get
+            {
+                return ((bool)(this["UseThumbnail"]));
+            }
+            set
+            {
+                this["UseThumbnail"] = value;
+            }
+        }
     }
 }

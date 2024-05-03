@@ -20,15 +20,19 @@ namespace DropTransfer
         public static ImageList imgList = new ImageList();
     }
 
+    public class Consts
+    {
+        public static readonly string[] imageExts = { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".ico", ".tif", ".tiff" };
+    }
+
     public class transDropBucket : PocketForm
     {
-        private DragDropEffects _dragEffect = DragDropEffects.All;
         public DragDropEffects DragEffect
         {
-            get => _dragEffect;
+            get => Properties.Settings.Default.DragEffect;
             set
             {
-                _dragEffect = value;
+                Properties.Settings.Default.DragEffect = value;
                 if (value == DragDropEffects.All)
                     Text = "拖放中转站 [自动]";
                 else if (value == DragDropEffects.Copy)
@@ -44,36 +48,63 @@ namespace DropTransfer
             TabStop = false
         };
 
+        public bool UseThumbnail
+        {
+            get => Properties.Settings.Default.UseThumbnail;
+            set
+            {
+                Properties.Settings.Default.UseThumbnail = value;
+                ResizeControl();
+            }
+        }
+
+        public int IconSize
+        {
+            get => Properties.Settings.Default.IconSize;
+            set
+            {
+                Properties.Settings.Default.IconSize = value;
+                Global.imgList.ImageSize = new Size(value * DpiScale, value * DpiScale);
+                ResizeControl();
+            }
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            List<(string, List<string>)> history = tc.TabPages.Cast<BucketTabPage>().Select(
-                x => new ValueTuple<string, List<string>>(x.Name, x.BucketListView.Items.Cast<ListViewItem>().Select(y => y.Name).ToList())
-            ).Where(l => l.Item2.Count > 0).ToList();
-            UnfoldedSize = new Size(this.ClientSize.Width, Math.Max(this.ClientSize.Height, 150 * DpiScale));
-            Properties.Settings.Default.SelectedIndex = tc.SelectedIndex;
-            Properties.Settings.Default.UnfoldedSize = this.UnfoldedSize;
+            IEnumerable<BucketTabPage> tabs = tc.TabPages.Cast<BucketTabPage>();
+            Properties.Settings.Default.History = tabs.Where(x => x.BucketItems.Count > 0).Select(
+                x => new ValueTuple<string, List<string>>(x.Name, x.BucketItems.Cast<ListViewItem>().Select(y => y.Name).ToList())
+            ).ToList();
+            int index = tc.SelectedIndex - tabs.Take(tc.SelectedIndex + 1).Where(x => x.BucketItems.Count == 0).Count();
+            if (index < 0) index = 0;
+            Properties.Settings.Default.SelectedIndex = index;
+            Properties.Settings.Default.UnfoldedSize = new Size(this.ClientSize.Width, Math.Max(this.ClientSize.Height, 150 * DpiScale));
             Properties.Settings.Default.WindowLocation = this.Location;
-            Properties.Settings.Default.DragEffect = this.DragEffect;
-            Properties.Settings.Default.History = history;
             Properties.Settings.Default.Save();
             base.OnFormClosing(e);
         }
 
         private void ResizeControl()
         {
-            Global.imgList.ImageSize = new Size(
-                16 * DpiScale,
-                16 * DpiScale
-            );
             Global.imgList.Images.Clear();
             foreach (BucketTabPage tp in tc.TabPages)
             {
                 BucketListView lv = tp.BucketListView as BucketListView;
                 foreach (ListViewItem item in lv.Items)
                 {
-                    string path = item.ImageKey;
-                    if (!Global.imgList.Images.ContainsKey(item.ImageKey))
-                        Global.imgList.Images.Add(item.ImageKey, ShellInfoHelper.GetIconFromPath(item.ImageKey));
+                    string path = item.Name;
+                    string ImageKey = item.ImageKey;
+                    if (!Global.imgList.Images.ContainsKey(ImageKey))
+                    {
+                        if (Properties.Settings.Default.UseThumbnail && File.Exists(path) && Consts.imageExts.Contains(Path.GetExtension(path).ToLower()))
+                        {
+                            Image img = Image.FromFile(path);
+                            Global.imgList.Images.Add(ImageKey, img.GetThumbnailImage(128, 128, () => false, IntPtr.Zero));
+                            img.Dispose();
+                        }
+                        else
+                            Global.imgList.Images.Add(ImageKey, ShellInfoHelper.GetIconFromPath(path, IconSize == 16));
+                    }
                 }
             }
             BucketTabPage tpSelected = tc.SelectedTab as BucketTabPage;
@@ -84,7 +115,7 @@ namespace DropTransfer
         protected override void OnDpiChanged(DpiChangedEventArgs e)
         {
             base.OnDpiChanged(e);
-            ResizeControl();
+            IconSize = IconSize;
         }
 
         public transDropBucket()
@@ -128,7 +159,8 @@ namespace DropTransfer
             if (history.Count > 0)
             {
                 tc.CreatePages(history);
-                tc.SelectedIndex = index;
+                if (index >= 0 && index < tc.TabPages.Count)
+                    tc.SelectedIndex = index;
             }
             else
             {
@@ -140,7 +172,7 @@ namespace DropTransfer
             Controls.Add(tc);
             ResumeLayout(false);
 
-            ResizeControl();
+            IconSize = Properties.Settings.Default.IconSize;
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -153,6 +185,8 @@ namespace DropTransfer
 
     public class BucketListView : ListViewWithoutHorizontalScrollBar
     {
+        public transDropBucket Form { get => FindForm() as transDropBucket; }
+
         public BucketListView()
         {
             AllowDrop = true;
@@ -188,7 +222,7 @@ namespace DropTransfer
                 foreach (ListViewItem item in SelectedItems)
                     paths.Add(item.Name);
                 DataObject fileData = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                DoDragDrop(fileData, (FindForm() as transDropBucket).DragEffect);
+                DoDragDrop(fileData, Form.DragEffect);
             });
             DragDrop += new DragEventHandler((object sender, DragEventArgs e) =>
             {
@@ -203,6 +237,14 @@ namespace DropTransfer
 
             KeyDown += new KeyEventHandler((object sender, KeyEventArgs e) =>
             {
+                if (e.Control && e.KeyCode == Keys.A)
+                {
+                    foreach (ListViewItem item in Items)
+                    {
+                        item.Checked = true;
+                        item.Selected = true;
+                    }
+                }
                 if (e.Control && e.KeyCode == Keys.V)
                 {
                     StringCollection dropList = Clipboard.GetFileDropList();
@@ -463,11 +505,18 @@ namespace DropTransfer
         {
             Name = path;
             string ext = File.Exists(path) ? Path.GetExtension(path) : "";
-            if (!Global.imgList.Images.ContainsKey(path))
-            {
-                Global.imgList.Images.Add(path, ShellInfoHelper.GetIconFromPath(path));
-            }
             ImageKey = path;
+            if (!Global.imgList.Images.ContainsKey(ImageKey))
+            {
+                if (Properties.Settings.Default.UseThumbnail && File.Exists(path) && Consts.imageExts.Contains(Path.GetExtension(path).ToLower()))
+                {
+                    Image img = Image.FromFile(path);
+                    Global.imgList.Images.Add(ImageKey, img.GetThumbnailImage(128, 128, () => false, IntPtr.Zero));
+                    img.Dispose();
+                }
+                else
+                    Global.imgList.Images.Add(ImageKey, ShellInfoHelper.GetIconFromPath(path, Properties.Settings.Default.IconSize == 16));
+            }
             Text = ShellInfoHelper.GetDisplayNameFromPath(path);
             SubItems.Add(ext);
             SubItems.Add(File.GetLastWriteTime(path).ToString("yyyy/MM/dd hh:mm"));
@@ -535,6 +584,9 @@ namespace DropTransfer
     {
         public BucketListView BucketListView;
 
+        public transDropBucket Form { get => FindForm() as transDropBucket; }
+        public ListView.ListViewItemCollection BucketItems { get => BucketListView.Items; }
+
         public BucketTabPage()
         {
             Text = "0";
@@ -550,7 +602,7 @@ namespace DropTransfer
 
             ContextMenuStrip.Items.Add("全选").Click += new EventHandler((object sender, EventArgs e) =>
             {
-                foreach (ListViewItem item in BucketListView.Items)
+                foreach (ListViewItem item in BucketItems)
                 {
                     item.Checked = true;
                     item.Selected = true;
@@ -573,17 +625,31 @@ namespace DropTransfer
                 else if (form.DragEffect == DragDropEffects.Move)
                     form.DragEffect = DragDropEffects.All;
             });
+
+            ContextMenuStrip.Items.Add("开启/关闭图片缩略图").Click += new EventHandler((object sender, EventArgs e) => Form.UseThumbnail = !Form.UseThumbnail);
+
+            ToolStripMenuItem iconSizeMenu = (ToolStripMenuItem)ContextMenuStrip.Items.Add("缩略图大小");
+            iconSizeMenu.DropDown.DropShadowEnabled = false;
+            foreach (int i in new int[] { 16, 32, 64, 128 })
+            {
+                iconSizeMenu.DropDown.Items.Add(i + "x" + i).Click += new EventHandler((object sender, EventArgs e) =>
+                {
+                    Form.IconSize = i;
+                });
+            }
         }
 
         public void SetName(string name)
         {
             Name = name;
-            Text = name == "" ? BucketListView.Items.Count.ToString() : name + " (" + BucketListView.Items.Count + ")";
+            Text = name == "" ? BucketItems.Count.ToString() : name + " (" + BucketItems.Count + ")";
         }
     }
 
     public class BucketTabControl : TabControlWithEditableTab
     {
+        public transDropBucket Form { get => FindForm() as transDropBucket; }
+
         private BucketTabPage draggedTab = null;
         private BucketTabPage contextTab = null;
         private BucketTabPage tpPlus = new BucketTabPage()
@@ -624,8 +690,9 @@ namespace DropTransfer
 
             tpCtxMnu.Items.Add("新建页").Click += new EventHandler((object sender, EventArgs e) =>
             {
-                TabPages.Insert(TabPages.Count - 1, new BucketTabPage());
-                SelectedTab = TabPages[TabPages.Count - 2];
+                BucketTabPage newTp = new BucketTabPage();
+                TabPages.Insert(TabPages.IndexOf(contextTab) + 1, newTp);
+                SelectedTab = newTp;
             });
             tpCtxMnu.Items.Add("删除页").Click += new EventHandler((object sender, EventArgs e) =>
             {
@@ -647,7 +714,7 @@ namespace DropTransfer
                     Size = new Size(TextRenderer.MeasureText(contextTab.Text, Font).Width, rect.Height)
                 };
                 tb.DisposeAction = () => contextTab.SetName(tb.Text);
-                FindForm().Controls.Add(tb);
+                Form.Controls.Add(tb);
                 tb.BringToFront();
                 tb.Focus();
             });
@@ -666,12 +733,12 @@ namespace DropTransfer
                     {
                         draggedTab = tp;
                         List<string> paths = new List<string>();
-                        foreach (ListViewItem item in draggedTab.BucketListView.Items)
+                        foreach (ListViewItem item in draggedTab.BucketItems)
                             paths.Add(item.Name);
                         if (paths.Count > 0)
                         {
                             DataObject fileData = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                            DoDragDrop(fileData, (FindForm() as transDropBucket).DragEffect);
+                            DoDragDrop(fileData, Form.DragEffect);
                         }
                         else
                         {

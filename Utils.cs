@@ -73,10 +73,11 @@ public class ShellInfoHelper
     public const uint SHGFI_ICON = 0x100;
     public const uint SHGFI_LARGEICON = 0x0;
     public const uint SHGFI_SMALLICON = 0x1;
+    public const uint SHGFI_USEFILEATTRIBUTES = 0x10;
     public const uint SHGFI_SYSICONINDEX = 0x4000;
 
-    [StructLayout(LayoutKind.Sequential)]
-    public struct SHFILEINFO
+    [StructLayoutAttribute(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct SHFILEINFOW
     {
         public IntPtr hIcon;
         public int iIcon;
@@ -97,26 +98,40 @@ public class ShellInfoHelper
                                                                                           IntPtr hToken);
 
     [DllImport("shell32")]
-    public static extern IntPtr SHGetFileInfo(string pszPath,
+    public static extern IntPtr SHGetFileInfoW([MarshalAs(UnmanagedType.LPWStr)] string pszPath,
                                               uint dwFileAttributes,
-                                              out SHFILEINFO psfi,
+                                              out SHFILEINFOW psfi,
                                               uint cbSizeFileInfo,
                                               uint uFlags);
+    [DllImport("user32")]
+    public static extern int DestroyIcon(IntPtr hIcon);
 
-    public static Image GetIconFromPath(string pszPath)
+    public static Image GetIconFromPath(string pszPath, bool simallIcon = true)
     {
-        SHFILEINFO info = new SHFILEINFO();
-        SHGetFileInfo(pszPath, 0, out info, (uint)Marshal.SizeOf(info), SHGFI_ICON | SHGFI_SMALLICON);
+        SHFILEINFOW info = new SHFILEINFOW();
+        uint flag = SHGFI_ICON;
+        flag |= simallIcon ? SHGFI_SMALLICON : SHGFI_LARGEICON;
+        if (!Directory.Exists(pszPath)) flag |= SHGFI_USEFILEATTRIBUTES;
+        SHGetFileInfoW(pszPath, 0, out info, (uint)Marshal.SizeOf(info), flag);
         if (info.hIcon == (IntPtr)0)
+        {
+            DestroyIcon(info.hIcon);
             return new Bitmap(32, 32);
+        }
         else
-            return Icon.FromHandle(info.hIcon).ToBitmap();
+        {
+            Icon icon = Icon.FromHandle(info.hIcon);
+            Image img = icon.ToBitmap();
+            icon.Dispose();
+            DestroyIcon(info.hIcon);
+            return img;
+        }
     }
 
     public static string GetDisplayNameFromPath(string pszPath)
     {
-        SHFILEINFO info = new SHFILEINFO();
-        SHGetFileInfo(pszPath, 0, out info, (uint)Marshal.SizeOf(info), SHGFI_DISPLAYNAME);
+        SHFILEINFOW info = new SHFILEINFOW();
+        SHGetFileInfoW(pszPath, 0, out info, (uint)Marshal.SizeOf(info), SHGFI_DISPLAYNAME);
         return info.szDisplayName;
     }
 
