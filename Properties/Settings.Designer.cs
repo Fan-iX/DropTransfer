@@ -110,7 +110,7 @@ namespace DropTransfer.Properties
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("true")]
+        [global::System.Configuration.DefaultSettingValueAttribute("false")]
         public bool UseThumbnail
         {
             get
@@ -120,6 +120,21 @@ namespace DropTransfer.Properties
             set
             {
                 this["UseThumbnail"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("true")]
+        public bool UseNavigate
+        {
+            get
+            {
+                return ((bool)(this["UseNavigate"]));
+            }
+            set
+            {
+                this["UseNavigate"] = value;
             }
         }
     }

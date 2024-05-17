@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using Microsoft.VisualBasic.FileIO;
+using System.Text;
+using System.Diagnostics;
 using System.Collections.Generic;
 
 public static class FileSizeHelper
@@ -155,8 +157,111 @@ public class ShellInfoHelper
     }
 }
 
-public class ShellApplication
+public class ShellApplicationHelper
 {
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("6D5140C1-7436-11CE-8034-00AA006009FA")]
+    internal interface IServiceProvider
+    {
+        void QueryService([MarshalAs(UnmanagedType.LPStruct)] Guid guidService, [MarshalAs(UnmanagedType.LPStruct)] Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object ppvObject);
+    }
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid("000214e2-0000-0000-c000-000000000046")]
+    internal interface IShellBrowser
+    {
+        IntPtr GetWindow();
+    }
+    public static IntPtr GetTabHwnd(object window)
+    {
+        IServiceProvider sp = window as IServiceProvider;
+        object sb;
+        sp.QueryService(Guid.Parse("000214e2-0000-0000-c000-000000000046"), typeof(IShellBrowser).GUID, out sb);
+        IShellBrowser shellBrowser = (IShellBrowser)sb;
+        return (IntPtr)shellBrowser.GetWindow();
+    }
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+    [DllImport("user32")]
+    private static extern void GetClassName(IntPtr hWnd, StringBuilder s, int nMaxCount);
+    public static string GetClassName(IntPtr hWnd)
+    {
+        StringBuilder sb = new StringBuilder(256);
+        GetClassName(hWnd, sb, 256);
+        return sb.ToString();
+    }
+    [DllImport("user32")]
+    public static extern bool EnumChildWindows(IntPtr window, EnumWindowProc callback, IntPtr i);
+    public delegate bool EnumWindowProc(IntPtr hWnd, IntPtr parameter);
+    private static bool EnumTabWindow(IntPtr handle, IntPtr pointer)
+    {
+        GCHandle gch = GCHandle.FromIntPtr(pointer);
+        List<IntPtr> list = gch.Target as List<IntPtr>;
+        if (GetClassName(handle) == "ShellTabWindowClass")
+        {
+            list.Add(handle);
+        }
+        return true;
+    }
+    public static IntPtr GetActiveTabHwnd(IntPtr parent)
+    {
+        List<IntPtr> result = new List<IntPtr>();
+        GCHandle listHandle = GCHandle.Alloc(result);
+        try
+        {
+            EnumWindowProc childProc = new EnumWindowProc(EnumTabWindow);
+            EnumChildWindows(parent, childProc, GCHandle.ToIntPtr(listHandle));
+        }
+        finally
+        {
+            if (listHandle.IsAllocated)
+                listHandle.Free();
+        }
+        return result[0];
+    }
+    [DllImport("user32.dll")]
+    static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    public static void NavigateExplorerTo(string path)
+    {
+        if (!Directory.Exists(path)) return;
+        IntPtr TopExplorerHwnd = FindWindow("CabinetWClass", null);
+        if (TopExplorerHwnd == IntPtr.Zero)
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return;
+        }
+        IntPtr activateTabHwnd = GetActiveTabHwnd(TopExplorerHwnd);
+
+        object shellApplication = System.Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));
+        object windows = shellApplication.GetType().InvokeMember("Windows", System.Reflection.BindingFlags.InvokeMethod, null, shellApplication, null);
+        int windowCounts = (int)windows.GetType().InvokeMember("Count", System.Reflection.BindingFlags.GetProperty, null, windows, null);
+
+        for (int i = 0; i < windowCounts; i++)
+        {
+            object window = windows.GetType().InvokeMember("Item", System.Reflection.BindingFlags.InvokeMethod, null, windows, new object[] { i });
+            IntPtr hwnd = (IntPtr)(long)window.GetType().InvokeMember("HWND", System.Reflection.BindingFlags.GetProperty, null, window, null);
+            IntPtr tabHwnd = GetTabHwnd(window);
+            if (hwnd != TopExplorerHwnd || tabHwnd != activateTabHwnd)
+            {
+                Marshal.ReleaseComObject(window);
+                continue;
+            }
+            else
+            {
+                if (path == "")
+                {
+                    window.GetType().InvokeMember("Refresh", System.Reflection.BindingFlags.InvokeMethod, null, window, null);
+                }
+                else
+                {
+                    window.GetType().InvokeMember("Navigate", System.Reflection.BindingFlags.InvokeMethod, null, window, new object[] { new Uri(path).ToString() });
+                }
+                Marshal.ReleaseComObject(window);
+                break;
+            }
+        }
+        Marshal.ReleaseComObject(windows);
+        Marshal.ReleaseComObject(shellApplication);
+    }
     public static List<string> GetExplorerPaths()
     {
         object shellApplication = System.Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));

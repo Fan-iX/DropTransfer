@@ -23,24 +23,16 @@ namespace DropTransfer
     public class Consts
     {
         public static readonly string[] imageExts = { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".ico", ".tif", ".tiff" };
+        public static readonly Dictionary<DragDropEffects, string> dragEffectDict = new Dictionary<DragDropEffects, string>()
+        {
+            { DragDropEffects.All, "自动" },
+            { DragDropEffects.Copy, "复制" },
+            { DragDropEffects.Move, "移动" }
+        };
     }
 
     public class transDropBucket : PocketForm
     {
-        public DragDropEffects DragEffect
-        {
-            get => Properties.Settings.Default.DragEffect;
-            set
-            {
-                Properties.Settings.Default.DragEffect = value;
-                if (value == DragDropEffects.All)
-                    Text = "拖放中转站 [自动]";
-                else if (value == DragDropEffects.Copy)
-                    Text = "拖放中转站 [复制]";
-                else if (value == DragDropEffects.Move)
-                    Text = "拖放中转站 [移动]";
-            }
-        }
         private BucketTabControl tc = new BucketTabControl()
         {
             Dock = DockStyle.Fill,
@@ -94,6 +86,7 @@ namespace DropTransfer
                 {
                     string path = item.Name;
                     string ImageKey = item.ImageKey;
+
                     if (!Global.imgList.Images.ContainsKey(ImageKey))
                     {
                         if (Properties.Settings.Default.UseThumbnail && File.Exists(path) && Consts.imageExts.Contains(Path.GetExtension(path).ToLower()))
@@ -105,6 +98,7 @@ namespace DropTransfer
                         else
                             Global.imgList.Images.Add(ImageKey, ShellInfoHelper.GetIconFromPath(path, IconSize == 16));
                     }
+                    item.ImageKey = item.ImageKey;
                 }
             }
             BucketTabPage tpSelected = tc.SelectedTab as BucketTabPage;
@@ -122,7 +116,7 @@ namespace DropTransfer
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(transDropBucket));
             UnfoldedSize = Properties.Settings.Default.UnfoldedSize;
-            DragEffect = Properties.Settings.Default.DragEffect;
+            Text = "拖放中转站";
 
             ClientSize = UnfoldedSize;
             MinimumSize = new Size(150 * DpiScale, 150 * DpiScale);
@@ -214,7 +208,7 @@ namespace DropTransfer
             {
                 SelectedItems.Clear();
                 if (e.Data.GetDataPresent(DataFormats.FileDrop))
-                    e.Effect = DragDropEffects.Copy;
+                    e.Effect = DragDropEffects.All;
             });
             ItemDrag += new ItemDragEventHandler((object sender, ItemDragEventArgs e) =>
             {
@@ -222,7 +216,7 @@ namespace DropTransfer
                 foreach (ListViewItem item in SelectedItems)
                     paths.Add(item.Name);
                 DataObject fileData = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                DoDragDrop(fileData, Form.DragEffect);
+                DoDragDrop(fileData, Properties.Settings.Default.DragEffect);
             });
             DragDrop += new DragEventHandler((object sender, DragEventArgs e) =>
             {
@@ -288,9 +282,23 @@ namespace DropTransfer
             MouseDoubleClick += new MouseEventHandler((object sender, MouseEventArgs e) =>
             {
                 ListViewItem item = FocusedItem;
-                if (e.Button == MouseButtons.Left && (File.Exists(item.Name) || Directory.Exists(item.Name)))
+                if (e.Button == MouseButtons.Left)
                 {
-                    Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
+                    if (File.Exists(item.Name))
+                    {
+                        Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
+                    }
+                    else if (Directory.Exists(item.Name))
+                    {
+                        if (Properties.Settings.Default.UseNavigate)
+                        {
+                            ShellApplicationHelper.NavigateExplorerTo(item.Name);
+                        }
+                        else
+                        {
+                            Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
+                        }
+                    }
                 }
             });
             ColumnClick += new ColumnClickEventHandler((object sender, ColumnClickEventArgs e) =>
@@ -615,27 +623,60 @@ namespace DropTransfer
                     item.Remove();
             });
 
-            ContextMenuStrip.Items.Add("切换拖放模式").Click += new EventHandler((object sender, EventArgs e) =>
+            ToolStripMenuItem dragEffectMenu = (ToolStripMenuItem)ContextMenuStrip.Items.Add("拖放模式");
+            dragEffectMenu.DropDown.DropShadowEnabled = false;
+            foreach (var kv in Consts.dragEffectDict)
             {
-                transDropBucket form = FindForm() as transDropBucket;
-                if (form.DragEffect == DragDropEffects.All)
-                    form.DragEffect = DragDropEffects.Copy;
-                else if (form.DragEffect == DragDropEffects.Copy)
-                    form.DragEffect = DragDropEffects.Move;
-                else if (form.DragEffect == DragDropEffects.Move)
-                    form.DragEffect = DragDropEffects.All;
+                ToolStripItem item = dragEffectMenu.DropDown.Items.Add(kv.Value);
+                item.Click += new EventHandler((object sender, EventArgs e) =>
+                 {
+                     foreach (ToolStripMenuItem i in dragEffectMenu.DropDown.Items)
+                     {
+                         i.Checked = false;
+                     }
+                     ((ToolStripMenuItem)sender).Checked = true;
+                     Properties.Settings.Default.DragEffect = kv.Key;
+                 });
+                if (kv.Key == Properties.Settings.Default.DragEffect)
+                {
+                    ((ToolStripMenuItem)item).Checked = true;
+                }
+            }
+
+            ToolStripItem navigateItem = ContextMenuStrip.Items.Add("跳转已打开的资源管理器");
+            ((ToolStripMenuItem)navigateItem).Checked = Properties.Settings.Default.UseNavigate;
+            navigateItem.Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                Properties.Settings.Default.UseNavigate = !Properties.Settings.Default.UseNavigate;
+                ((ToolStripMenuItem)sender).Checked = Properties.Settings.Default.UseNavigate;
             });
 
-            ContextMenuStrip.Items.Add("开启/关闭图片缩略图").Click += new EventHandler((object sender, EventArgs e) => Form.UseThumbnail = !Form.UseThumbnail);
-
-            ToolStripMenuItem iconSizeMenu = (ToolStripMenuItem)ContextMenuStrip.Items.Add("缩略图大小");
-            iconSizeMenu.DropDown.DropShadowEnabled = false;
-            foreach (int i in new int[] { 16, 32, 64, 128 })
+            ToolStripItem thumbnailItem = ContextMenuStrip.Items.Add("图片文件显示缩略图");
+            ((ToolStripMenuItem)thumbnailItem).Checked = Properties.Settings.Default.UseThumbnail;
+            thumbnailItem.Click += new EventHandler((object sender, EventArgs e) =>
             {
-                iconSizeMenu.DropDown.Items.Add(i + "x" + i).Click += new EventHandler((object sender, EventArgs e) =>
+                Form.UseThumbnail = !Form.UseThumbnail;
+                ((ToolStripMenuItem)sender).Checked = Form.UseThumbnail;
+            });
+
+            ToolStripMenuItem iconSizeMenu = (ToolStripMenuItem)ContextMenuStrip.Items.Add("图标/缩略图大小");
+            iconSizeMenu.DropDown.DropShadowEnabled = false;
+            foreach (int size in new int[] { 16, 32, 64, 128 })
+            {
+                ToolStripItem item = iconSizeMenu.DropDown.Items.Add(size + "x" + size);
+                item.Click += new EventHandler((object sender, EventArgs e) =>
                 {
-                    Form.IconSize = i;
+                    foreach (ToolStripMenuItem i in iconSizeMenu.DropDown.Items)
+                    {
+                        i.Checked = false;
+                    }
+                    ((ToolStripMenuItem)sender).Checked = true;
+                    Form.IconSize = size;
                 });
+                if (size == Properties.Settings.Default.IconSize)
+                {
+                    ((ToolStripMenuItem)item).Checked = true;
+                }
             }
         }
 
@@ -738,7 +779,7 @@ namespace DropTransfer
                         if (paths.Count > 0)
                         {
                             DataObject fileData = new DataObject(DataFormats.FileDrop, paths.ToArray());
-                            DoDragDrop(fileData, Form.DragEffect);
+                            DoDragDrop(fileData, Properties.Settings.Default.DragEffect);
                         }
                         else
                         {
