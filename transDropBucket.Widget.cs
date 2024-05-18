@@ -115,6 +115,18 @@ namespace DropTransfer
                     break;
             }
         }
+
+        public bool Updating = false;
+
+        public void StartUpdate(){
+            Updating = true;
+            BeginUpdate();
+        }
+
+        public void StopUpdate(){
+            Updating = false;
+            EndUpdate();
+        }
     }
 
     public class TabControlWithEditableTab : TabControl

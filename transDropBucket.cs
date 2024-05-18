@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.Reflection;
 using ShellApp;
+using System.Timers;
 using System.Windows.Forms.VisualStyles;
 
 
@@ -18,6 +19,11 @@ namespace DropTransfer
     {
         public static ShellContextMenu ctxMnu = new ShellContextMenu();
         public static ImageList imgList = new ImageList();
+        public static DateTime lastLayoutLock = new DateTime(0);
+        public static System.Timers.Timer layoutLockTimer = new System.Timers.Timer()
+        {
+            Interval = 100
+        };
     }
 
     public class Consts
@@ -509,6 +515,8 @@ namespace DropTransfer
     {
         private FileSystemWatcher watcher;
 
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        public static extern void OutputDebugString(string message);
         public ListViewDirectoryItem(string path)
         {
             Name = path;
@@ -538,7 +546,25 @@ namespace DropTransfer
                 IncludeSubdirectories = true
             };
             watcher.Changed += new FileSystemEventHandler(OnFileChanged);
-            watcher.Deleted += new FileSystemEventHandler((object sender, FileSystemEventArgs e) => Remove());
+            watcher.Deleted += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
+            {
+                BucketListView lv = ListView as BucketListView;
+                if (!lv.Updating)
+                {
+                    lv.StartUpdate();
+                    ElapsedEventHandler evh = null;
+                    evh = new ElapsedEventHandler((object s, ElapsedEventArgs ev) =>
+                    {
+                        Global.layoutLockTimer.Elapsed -= evh;
+                        lv.StopUpdate();
+                        Global.layoutLockTimer.Stop();
+                    });
+                    Global.layoutLockTimer.Elapsed += evh;
+                }
+                Remove();
+                Global.layoutLockTimer.Stop();
+                Global.layoutLockTimer.Start();
+            });
             watcher.Renamed += new RenamedEventHandler((object sender, RenamedEventArgs e) =>
             {
                 if (e.ChangeType == WatcherChangeTypes.Renamed)
