@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Drawing;
 using System.Windows.Forms;
@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using ShellApp;
 using System.Timers;
-using System.Windows.Forms.VisualStyles;
 
 
 namespace DropTransfer
@@ -76,8 +75,8 @@ namespace DropTransfer
             int index = tc.SelectedIndex - tabs.Take(tc.SelectedIndex + 1).Where(x => x.BucketItems.Count == 0).Count();
             if (index < 0) index = 0;
             Properties.Settings.Default.SelectedIndex = index;
-            Properties.Settings.Default.UnfoldedSize = new Size(this.ClientSize.Width, Math.Max(this.ClientSize.Height, 150 * DpiScale));
-            Properties.Settings.Default.WindowLocation = this.Location;
+            Properties.Settings.Default.UnfoldedSize = new Size(ClientSize.Width, Math.Max(UnfoldedSize.Height, 150 * DpiScale));
+            Properties.Settings.Default.WindowLocation = Location;
             Properties.Settings.Default.Save();
             base.OnFormClosing(e);
         }
@@ -200,21 +199,25 @@ namespace DropTransfer
             Columns.Add("修改时间", -2, HorizontalAlignment.Left);
             Columns.Add("大小", -2, HorizontalAlignment.Right);
 
-            DragOver += new DragEventHandler((object sender, DragEventArgs e) =>
-            {
-                Focus();
-                Point point = PointToClient(new Point(e.X, e.Y));
-                ListViewItem item = GetItemAt(point.X, point.Y);
-                if (item != null)
-                {
-                    item.Focused = true;
-                }
-            });
             DragEnter += new DragEventHandler((object sender, DragEventArgs e) =>
             {
                 SelectedItems.Clear();
                 if (e.Data.GetDataPresent(DataFormats.FileDrop))
                     e.Effect = DragDropEffects.All;
+            });
+            DragOver += new DragEventHandler((object sender, DragEventArgs e) =>
+            {
+                Focus();
+                if(e.Effect == DragDropEffects.None) return;
+                Point point = PointToClient(new Point(e.X, e.Y));
+                ListViewItem item = GetItemAt(point.X, point.Y);
+                if (item == null) return;
+                InsertionMark.AppearsAfterItem = point.Y > item.Bounds.Top + item.Bounds.Height / 2;
+                InsertionMark.Index = item.Index;
+            });
+            DragLeave += new EventHandler((object sender, EventArgs e) =>
+            {
+                InsertionMark.Index = -1;
             });
             ItemDrag += new ItemDragEventHandler((object sender, ItemDragEventArgs e) =>
             {
@@ -233,6 +236,7 @@ namespace DropTransfer
                     InsertItemsAfter(item, paths);
                 else
                     InsertItemsBefore(item, paths);
+                InsertionMark.Index = -1;
             });
 
             KeyDown += new KeyEventHandler((object sender, KeyEventArgs e) =>
@@ -281,7 +285,7 @@ namespace DropTransfer
                         List<string> paths = new List<string>();
                         foreach (ListViewItem item in SelectedItems)
                             paths.Add(item.Name);
-                        Global.ctxMnu.ShowContextMenu(paths.Select(x => new FileInfo(x)).ToArray(), this.PointToScreen(new Point(e.X, e.Y)));
+                        Global.ctxMnu.ShowContextMenu(paths.Select(x => new FileInfo(x)).ToArray(), Cursor.Position);
                     }
                 }
             });
@@ -514,9 +518,6 @@ namespace DropTransfer
     class ListViewDirectoryItem : ListViewItem
     {
         private FileSystemWatcher watcher;
-
-        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-        public static extern void OutputDebugString(string message);
         public ListViewDirectoryItem(string path)
         {
             Name = path;
@@ -542,10 +543,12 @@ namespace DropTransfer
             watcher = new FileSystemWatcher()
             {
                 Path = Path.GetDirectoryName(path),
-                Filter = Path.GetFileName(path),
-                IncludeSubdirectories = true
+                Filter = Path.GetFileName(path)
             };
-            watcher.Changed += new FileSystemEventHandler(OnFileChanged);
+            watcher.Changed += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
+            {
+                SubItems[2].Text = File.GetLastWriteTime(Name).ToString("yyyy/MM/dd hh:mm");
+            });
             watcher.Deleted += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
             {
                 BucketListView lv = ListView as BucketListView;
@@ -575,11 +578,6 @@ namespace DropTransfer
                 }
             });
             watcher.EnableRaisingEvents = true;
-        }
-
-        private void OnFileChanged(object sender, FileSystemEventArgs e)
-        {
-            SubItems[2].Text = File.GetLastWriteTime(Name).ToString("yyyy/MM/dd hh:mm");
         }
 
         override public void Remove()

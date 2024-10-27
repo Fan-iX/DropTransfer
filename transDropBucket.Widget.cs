@@ -14,6 +14,7 @@ namespace DropTransfer
         {
             get => new DpiFactor(DeviceDpi / 96.0f);
         }
+        private Size _previousSize;
 
         public PocketForm()
         {
@@ -32,9 +33,18 @@ namespace DropTransfer
             {
                 if (Foldable & !this.ClientRectangle.Contains(this.PointToClient(Control.MousePosition))) Fold();
             });
+            ResizeBegin += new EventHandler((object sender, EventArgs e) =>
+            {
+                _previousSize = ClientSize;
+            });
             ResizeEnd += new EventHandler((object sender, EventArgs e) =>
             {
-                UnfoldedSize = ClientSize;
+                if (ClientSize != _previousSize)
+                {
+                    Foldable = false;
+                    Folded = false;
+                    UnfoldedSize = new Size(ClientSize.Width, Math.Max(ClientSize.Height, 150 * DpiScale));
+                }
             });
         }
 
@@ -118,12 +128,14 @@ namespace DropTransfer
 
         public bool Updating = false;
 
-        public void StartUpdate(){
+        public void StartUpdate()
+        {
             Updating = true;
             BeginUpdate();
         }
 
-        public void StopUpdate(){
+        public void StopUpdate()
+        {
             Updating = false;
             EndUpdate();
         }

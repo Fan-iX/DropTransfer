@@ -113,7 +113,6 @@ public class ShellInfoHelper
         SHFILEINFOW info = new SHFILEINFOW();
         uint flag = SHGFI_ICON;
         flag |= simallIcon ? SHGFI_SMALLICON : SHGFI_LARGEICON;
-        if (!Directory.Exists(pszPath)) flag |= SHGFI_USEFILEATTRIBUTES;
         SHGetFileInfoW(pszPath, 0, out info, (uint)Marshal.SizeOf(info), flag);
         if (info.hIcon == (IntPtr)0)
         {
