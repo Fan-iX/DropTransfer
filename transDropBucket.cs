@@ -208,7 +208,7 @@ namespace DropTransfer
             DragOver += new DragEventHandler((object sender, DragEventArgs e) =>
             {
                 Focus();
-                if(e.Effect == DragDropEffects.None) return;
+                if (e.Effect == DragDropEffects.None) return;
                 Point point = PointToClient(new Point(e.X, e.Y));
                 ListViewItem item = GetItemAt(point.X, point.Y);
                 if (item == null) return;
@@ -229,13 +229,17 @@ namespace DropTransfer
             });
             DragDrop += new DragEventHandler((object sender, DragEventArgs e) =>
             {
-                string[] paths = (string[])e.Data.GetData(DataFormats.FileDrop);
                 Point point = PointToClient(new Point(e.X, e.Y));
                 ListViewItem item = GetItemAt(point.X, point.Y);
-                if (item == null || point.Y > item.Bounds.Top + item.Bounds.Height / 2)
-                    InsertItemsAfter(item, paths);
-                else
-                    InsertItemsBefore(item, paths);
+                if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                {
+                    string[] paths = (string[])e.Data.GetData(DataFormats.FileDrop);
+
+                    if (item == null || point.Y > item.Bounds.Top + item.Bounds.Height / 2)
+                        InsertFileSystemItemsAfter(item, paths);
+                    else
+                        InsertFileSystemItemsBefore(item, paths);
+                }
                 InsertionMark.Index = -1;
             });
 
@@ -253,7 +257,7 @@ namespace DropTransfer
                 {
                     StringCollection dropList = Clipboard.GetFileDropList();
                     if (dropList == null || dropList.Count == 0) return;
-                    AddItems(dropList);
+                    AddFileSystemItems(dropList);
                 }
                 else if (e.Control && (e.KeyCode == Keys.C || e.KeyCode == Keys.X))
                 {
@@ -339,139 +343,123 @@ namespace DropTransfer
             Columns[0].Width = ClientSize.Width - Columns[1].Width - Columns[2].Width - Columns[3].Width;
         }
 
-        public void AddItems(string[] paths)
+        public void AddItem(ListViewItem item)
         {
-            if (paths == null || paths.Length == 0) return;
-            BeginUpdate();
-            foreach (string path in paths)
-                AddItem(path);
-            EndUpdate();
-            Refresh();
-            (Parent as BucketTabPage).SetName(Parent.Name);
+            ListViewItem old_item = Items[item.Name];
+            if (Items.Contains(item)) item.Remove();
+            Items.Add(item);
+            if (old_item != null && old_item != item) old_item.Remove();
         }
 
-        public void AddItems(List<string> paths)
+        public ListViewItem InsertItemBefore(ListViewItem anchor, ListViewItem item)
         {
-            if (paths == null || paths.Count == 0) return;
-            BeginUpdate();
-            foreach (string path in paths)
-                AddItem(path);
-            EndUpdate();
-            Refresh();
-            (Parent as BucketTabPage).SetName(Parent.Name);
+            ListViewItem old_item = Items[item.Name];
+            if (anchor != null && anchor == item) return item;
+            if (Items.Contains(item)) Items.Remove(item);
+
+            if (anchor == null || !Items.Contains(anchor))
+                Items.Insert(0, item);
+            else
+                Items.Insert(Items.IndexOf(anchor), item);
+            if (old_item != null && old_item != item) old_item.Remove();
+
+            item.Selected = true;
+            item.Focused = true;
+            return item;
         }
 
-        public void InsertItemsBefore(ListViewItem anchor, string[] paths)
+        public ListViewItem InsertItemAfter(ListViewItem anchor, ListViewItem item)
         {
-            if (paths == null || paths.Length == 0) return;
-            BeginUpdate();
-            SelectedItems.Clear();
-            anchor = InsertItemBefore(anchor, paths[0]);
-            foreach (string path in paths.Skip(1))
-            {
-                anchor = InsertItemAfter(anchor, path);
-                anchor.Selected = true;
-            }
-            anchor.Focused = true;
-            EndUpdate();
-            Refresh();
-            (Parent as BucketTabPage).SetName(Parent.Name);
-        }
-        public void InsertItemsAfter(ListViewItem anchor, string[] paths)
-        {
-            if (paths == null || paths.Length == 0) return;
-            BeginUpdate();
-            SelectedItems.Clear();
-            foreach (string path in paths)
-            {
-                anchor = InsertItemAfter(anchor, path);
-                anchor.Selected = true;
-            }
-            anchor.Focused = true;
-            EndUpdate();
-            Refresh();
-            (Parent as BucketTabPage).SetName(Parent.Name);
-        }
+            ListViewItem old_item = Items[item.Name];
+            if (anchor != null && anchor == item) return item;
 
-        public void AddItems(StringCollection paths)
-        {
-            if (paths == null || paths.Count == 0) return;
-            BeginUpdate();
-            foreach (string path in paths)
-                AddItem(path);
-            EndUpdate();
-            Refresh();
-            (Parent as BucketTabPage).SetName(Parent.Name);
-        }
-
-        public void AddItem(string sourceName)
-        {
-            if (Items.ContainsKey(sourceName))
-            {
-                ListViewItem item = Items[sourceName];
-                Items.Remove(item);
+            if (Items.Contains(item)) Items.Remove(item);
+            if (anchor == null || !Items.Contains(anchor))
                 Items.Add(item);
-            }
-            else if (Directory.Exists(sourceName))
-                Items.Add(new ListViewDirectoryItem(sourceName));
-            else if (File.Exists(sourceName))
-                Items.Add(new ListViewFileItem(sourceName));
-        }
-
-        public ListViewItem InsertItemBefore(ListViewItem anchor, string sourceName)
-        {
-            ListViewItem item = null;
-            if (Items.ContainsKey(sourceName))
-            {
-                if (anchor != null && anchor.Name == sourceName) return anchor;
-                item = Items[sourceName];
-                Items.Remove(item);
-                if (anchor == null || !Items.Contains(anchor))
-                    item = Items.Insert(0, item);
-                else
-                    item = Items.Insert(Items.IndexOf(anchor), item);
-            }
             else
-            {
-                item = Directory.Exists(sourceName) ? new ListViewDirectoryItem(sourceName) :
-                File.Exists(sourceName) ? new ListViewFileItem(sourceName) : null;
-                if (item == null) return null;
-                if (anchor == null || !Items.Contains(anchor))
-                    item = Items.Insert(0, item);
-                else
-                    item = Items.Insert(Items.IndexOf(anchor), item);
-            }
+                Items.Insert(Items.IndexOf(anchor) + 1, item);
+            if (old_item != null && old_item != item) old_item.Remove();
+
             item.Selected = true;
             item.Focused = true;
             return item;
         }
 
-        public ListViewItem InsertItemAfter(ListViewItem anchor, string sourceName)
+        public void AddItems(ListViewItem[] items)
         {
-            ListViewItem item = null;
-            if (Items.ContainsKey(sourceName))
+            if (items == null || items.Length == 0) return;
+            BeginUpdate();
+            foreach (ListViewItem item in items)
+                AddItem(item);
+            EndUpdate();
+            Refresh();
+            (Parent as BucketTabPage).SetName(Parent.Name);
+        }
+
+        public void InsertItemsBefore(ListViewItem anchor, ListViewItem[] items)
+        {
+            if (items == null || items.Length == 0) return;
+            BeginUpdate();
+            SelectedItems.Clear();
+            foreach (ListViewItem item in items.Reverse())
             {
-                if (anchor != null && anchor.Name == sourceName) return anchor;
-                item = Items[sourceName];
-                Items.Remove(item);
-                if (anchor == null || !Items.Contains(anchor))
-                    return Items.Add(item);
-                else
-                    return Items.Insert(Items.IndexOf(anchor) + 1, item);
+                anchor = InsertItemBefore(anchor, item);
+                anchor.Selected = true;
             }
-            else
+            anchor.Focused = true;
+            EndUpdate();
+            Refresh();
+            (Parent as BucketTabPage).SetName(Parent.Name);
+        }
+
+        public void InsertItemsAfter(ListViewItem anchor, ListViewItem[] items)
+        {
+            if (items == null || items.Length == 0) return;
+            BeginUpdate();
+            SelectedItems.Clear();
+            foreach (ListViewItem item in items)
             {
-                item = Directory.Exists(sourceName) ? new ListViewDirectoryItem(sourceName) :
-               File.Exists(sourceName) ? new ListViewFileItem(sourceName) : null;
-                if (item == null) return null;
-                if (anchor == null || !Items.Contains(anchor))
-                    item = Items.Add(item);
-                else
-                    item = Items.Insert(Items.IndexOf(anchor) + 1, item);
+                anchor = InsertItemAfter(anchor, item);
+                anchor.Selected = true;
             }
-            item.Selected = true;
-            item.Focused = true;
-            return item;
+            anchor.Focused = true;
+            EndUpdate();
+            Refresh();
+            (Parent as BucketTabPage).SetName(Parent.Name);
+        }
+
+        public void AddFileSystemItems(string[] paths)
+        {
+            ListViewItem[] items = paths.Select(x => Items.ContainsKey(x) ? Items[x] :
+                Directory.Exists(x) ? new ListViewDirectoryItem(x) as ListViewItem :
+                File.Exists(x) ? new ListViewFileItem(x) as ListViewItem : null).ToArray();
+            AddItems(items);
+        }
+
+        public void AddFileSystemItems(List<string> paths)
+        {
+            AddFileSystemItems(paths.ToArray());
+        }
+
+        public void AddFileSystemItems(StringCollection paths)
+        {
+            AddFileSystemItems(paths.Cast<string>().ToArray());
+        }
+
+        public void InsertFileSystemItemsBefore(ListViewItem anchor, string[] paths)
+        {
+            ListViewItem[] items = paths.Select(x => Items.ContainsKey(x) ? Items[x] :
+                Directory.Exists(x) ? new ListViewDirectoryItem(x) as ListViewItem :
+                File.Exists(x) ? new ListViewFileItem(x) as ListViewItem : null).ToArray();
+            InsertItemsBefore(anchor, items);
+        }
+
+        public void InsertFileSystemItemsAfter(ListViewItem anchor, string[] paths)
+        {
+            ListViewItem[] items = paths.Select(x => Items.ContainsKey(x) ? Items[x] :
+                Directory.Exists(x) ? new ListViewDirectoryItem(x) as ListViewItem :
+                File.Exists(x) ? new ListViewFileItem(x) as ListViewItem : null).ToArray();
+            InsertItemsAfter(anchor, items);
         }
     }
 
@@ -515,29 +503,18 @@ namespace DropTransfer
         }
     }
 
-    class ListViewDirectoryItem : ListViewItem
+    class ListViewFileSystemItem : ListViewItem
     {
-        private FileSystemWatcher watcher;
-        public ListViewDirectoryItem(string path)
+        internal FileSystemWatcher watcher;
+        public ListViewFileSystemItem(string path)
         {
             Name = path;
             string ext = File.Exists(path) ? Path.GetExtension(path) : "";
+            CreateIcon(path);
             ImageKey = path;
-            if (!Global.imgList.Images.ContainsKey(ImageKey))
-            {
-                if (Properties.Settings.Default.UseThumbnail && File.Exists(path) && Consts.imageExts.Contains(Path.GetExtension(path).ToLower()))
-                {
-                    Image img = Image.FromFile(path);
-                    Global.imgList.Images.Add(ImageKey, img.GetThumbnailImage(128, 128, () => false, IntPtr.Zero));
-                    img.Dispose();
-                }
-                else
-                    Global.imgList.Images.Add(ImageKey, ShellInfoHelper.GetIconFromPath(path, Properties.Settings.Default.IconSize == 16));
-            }
-            Text = ShellInfoHelper.GetDisplayNameFromPath(path);
-            SubItems.Add(ext);
-            SubItems.Add(File.GetLastWriteTime(path).ToString("yyyy/MM/dd hh:mm"));
-            SubItems.Add(""); // size
+            SubItems.Add("");
+            SubItems.Add("");
+            SubItems.Add("");
             SubItems[3].Tag = (long)0;
 
             watcher = new FileSystemWatcher()
@@ -545,10 +522,6 @@ namespace DropTransfer
                 Path = Path.GetDirectoryName(path),
                 Filter = Path.GetFileName(path)
             };
-            watcher.Changed += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
-            {
-                SubItems[2].Text = File.GetLastWriteTime(Name).ToString("yyyy/MM/dd hh:mm");
-            });
             watcher.Deleted += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
             {
                 BucketListView lv = ListView as BucketListView;
@@ -568,47 +541,87 @@ namespace DropTransfer
                 Global.layoutLockTimer.Stop();
                 Global.layoutLockTimer.Start();
             });
+            watcher.Changed += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
+            {
+                updateDetail();
+            });
             watcher.Renamed += new RenamedEventHandler((object sender, RenamedEventArgs e) =>
             {
                 if (e.ChangeType == WatcherChangeTypes.Renamed)
                 {
                     Name = e.FullPath;
-                    SubItems[0].Text = e.Name;
+                    RemoveIcon(e.OldFullPath);
+                    CreateIcon(e.FullPath);
+                    ImageKey = e.FullPath;
+                    updateDetail();
                     watcher.Filter = Path.GetFileName(e.FullPath);
                 }
             });
             watcher.EnableRaisingEvents = true;
+            updateDetail();
+        }
+
+        private void CreateIcon(string path)
+        {
+            if (!Global.imgList.Images.ContainsKey(path))
+            {
+                if (Properties.Settings.Default.UseThumbnail && File.Exists(path) && Consts.imageExts.Contains(Path.GetExtension(path).ToLower()))
+                {
+                    Image img = Image.FromFile(path);
+                    Global.imgList.Images.Add(path, img.GetThumbnailImage(128, 128, () => false, IntPtr.Zero));
+                    img.Dispose();
+                }
+                else
+                    Global.imgList.Images.Add(path, ShellInfoHelper.GetIconFromPath(path, Properties.Settings.Default.IconSize == 16));
+            }
+        }
+        private void RemoveIcon(string path)
+        {
+            if (Global.imgList.Images.ContainsKey(path))
+            {
+                Global.imgList.Images.RemoveByKey(path);
+            }
         }
 
         override public void Remove()
         {
-            BucketTabPage tp = ListView.Parent as BucketTabPage;
             watcher.EnableRaisingEvents = false;
             watcher.Dispose();
-            base.Remove();
-            tp.SetName(tp.Name);
+            if (ListView != null)
+            {
+                BucketTabPage tp = ListView.Parent as BucketTabPage;
+                base.Remove();
+                tp.SetName(tp.Name);
+            }
+        }
+
+        internal virtual void updateDetail()
+        {
+            Text = ShellInfoHelper.GetDisplayNameFromPath(Name);
         }
     }
 
-    class ListViewFileItem : ListViewDirectoryItem
+    class ListViewDirectoryItem : ListViewFileSystemItem
     {
-        private FileInfo fileInfo;
-        public ListViewFileItem(string path) : base(path)
+        public ListViewDirectoryItem(string path) : base(path) { }
+        internal override void updateDetail()
         {
-            fileInfo = new FileInfo(path);
+            base.updateDetail();
+            SubItems[2].Text = Directory.GetLastWriteTime(Name).ToString("yyyy/MM/dd hh:mm");
+        }
+    }
 
+    class ListViewFileItem : ListViewFileSystemItem
+    {
+        public ListViewFileItem(string path) : base(path) { }
+        internal override void updateDetail()
+        {
+            base.updateDetail();
+            FileInfo fileInfo = new FileInfo(Name);
+            SubItems[1].Text = fileInfo.Extension;
+            SubItems[2].Text = fileInfo.LastWriteTime.ToString("yyyy/MM/dd hh:mm");
             SubItems[3].Text = FileSizeHelper.GetHumanReadableFileSize(fileInfo.Length);
             SubItems[3].Tag = (long)fileInfo.Length;
-        }
-
-        private void OnFileChanged(object sender, FileSystemEventArgs e)
-        {
-            if (e.ChangeType == WatcherChangeTypes.Changed)
-            {
-                SubItems[2].Text = File.GetLastWriteTime(Name).ToString("yyyy/MM/dd hh:mm");
-                SubItems[3].Text = FileSizeHelper.GetHumanReadableFileSize(fileInfo.Length);
-                SubItems[3].Tag = (long)fileInfo.Length;
-            }
         }
     }
 
@@ -863,7 +876,7 @@ namespace DropTransfer
                 {
                     string[] paths = (string[])e.Data.GetData(DataFormats.FileDrop);
                     if (paths.Length == 0) return;
-                    targetTab.BucketListView.AddItems(paths);
+                    targetTab.BucketListView.AddFileSystemItems(paths);
                     tpPlus.BucketListView.DragDrop -= tpDragDropExtra;
                     tpPlus = new BucketTabPage() { Text = "+" };
                     tpPlus.BucketListView.DragDrop += tpDragDropExtra;
@@ -881,7 +894,7 @@ namespace DropTransfer
                 else
                 {
                     string[] paths = (string[])e.Data.GetData(DataFormats.FileDrop);
-                    targetTab.BucketListView.AddItems(paths);
+                    targetTab.BucketListView.AddFileSystemItems(paths);
                 }
             });
         }
@@ -901,7 +914,7 @@ namespace DropTransfer
             {
                 Name = name
             };
-            tp.BucketListView.AddItems(paths);
+            tp.BucketListView.AddFileSystemItems(paths);
             TabPages.Insert(TabPages.Count - 1, tp);
             SelectedTab = tp;
         }
