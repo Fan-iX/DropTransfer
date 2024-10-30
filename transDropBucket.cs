@@ -8,8 +8,9 @@ using System.Linq;
 using System.Diagnostics;
 using System.Collections.Generic;
 using System.Reflection;
-using ShellApp;
 using System.Timers;
+using Microsoft.VisualBasic.FileIO;
+using ShellApp;
 
 
 namespace DropTransfer
@@ -63,6 +64,19 @@ namespace DropTransfer
                 Properties.Settings.Default.IconSize = value;
                 Global.imgList.ImageSize = new Size(value * DpiScale, value * DpiScale);
                 ResizeControl();
+            }
+        }
+
+        internal List<ListViewFileSystemItem> FileSystemItems
+        {
+            get
+            {
+                List<ListViewFileSystemItem> items = new List<ListViewFileSystemItem>();
+                foreach (BucketTabPage tp in tc.TabPages)
+                {
+                    items.AddRange(tp.BucketItems.Cast<ListViewFileSystemItem>());
+                }
+                return items;
             }
         }
 
@@ -190,6 +204,7 @@ namespace DropTransfer
         {
             AllowDrop = true;
             CheckBoxes = true;
+            LabelEdit = true;
 
             View = View.Details;
             SmallImageList = Global.imgList;
@@ -199,6 +214,19 @@ namespace DropTransfer
             Columns.Add("修改时间", -2, HorizontalAlignment.Left);
             Columns.Add("大小", -2, HorizontalAlignment.Right);
 
+            ItemSelectionChanged += new ListViewItemSelectionChangedEventHandler((object sender, ListViewItemSelectionChangedEventArgs e) =>
+            {
+                if (FocusedItem is ListViewFileItem)
+                {
+                    if (!File.Exists(FocusedItem.Name))
+                        FocusedItem.Remove();
+                }
+                else if (FocusedItem is ListViewDirectoryItem)
+                {
+                    if (!Directory.Exists(FocusedItem.Name))
+                        FocusedItem.Remove();
+                }
+            });
             DragEnter += new DragEventHandler((object sender, DragEventArgs e) =>
             {
                 SelectedItems.Clear();
@@ -278,6 +306,10 @@ namespace DropTransfer
                     foreach (ListViewItem item in SelectedItems)
                         item.Remove();
                 }
+                else if (e.KeyCode == Keys.F2 && SelectedItems.Count > 0)
+                {
+                    FocusedItem.BeginEdit();
+                }
             });
 
             MouseClick += new MouseEventHandler((object sender, MouseEventArgs e) =>
@@ -291,6 +323,23 @@ namespace DropTransfer
                             paths.Add(item.Name);
                         Global.ctxMnu.ShowContextMenu(paths.Select(x => new FileInfo(x)).ToArray(), Cursor.Position);
                     }
+                }
+            });
+            AfterLabelEdit += new LabelEditEventHandler((object sender, LabelEditEventArgs e) =>
+            {
+                if (e.Label == null || e.Label == "") return;
+                if (e.Label.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                {
+                    MessageBox.Show("文件名中包含非法字符串", "重命名文件", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    e.CancelEdit = true;
+                    return;
+                }
+                if (FocusedItem is ListViewFileSystemItem)
+                {
+                    ListViewFileSystemItem item = FocusedItem as ListViewFileSystemItem;
+                    string target = Path.Combine(Path.GetDirectoryName(item.Name), e.Label);
+                    bool moveSuccess = item.FileSystemMoveTo(Path.Combine(Path.GetDirectoryName(item.Name), e.Label));
+                    e.CancelEdit = !moveSuccess;
                 }
             });
             MouseDoubleClick += new MouseEventHandler((object sender, MouseEventArgs e) =>
@@ -432,7 +481,7 @@ namespace DropTransfer
         {
             ListViewItem[] items = paths.Select(x => Items.ContainsKey(x) ? Items[x] :
                 Directory.Exists(x) ? new ListViewDirectoryItem(x) as ListViewItem :
-                File.Exists(x) ? new ListViewFileItem(x) as ListViewItem : null).ToArray();
+                File.Exists(x) ? new ListViewFileItem(x) as ListViewItem : null).Where(x => x != null).ToArray();
             AddItems(items);
         }
 
@@ -508,6 +557,7 @@ namespace DropTransfer
         internal FileSystemWatcher watcher;
         public ListViewFileSystemItem(string path)
         {
+            path = Path.GetFullPath(path);
             Name = path;
             string ext = File.Exists(path) ? Path.GetExtension(path) : "";
             CreateIcon(path);
@@ -519,8 +569,8 @@ namespace DropTransfer
 
             watcher = new FileSystemWatcher()
             {
-                Path = Path.GetDirectoryName(path),
-                Filter = Path.GetFileName(path)
+                Path = Path.GetDirectoryName(Name),
+                Filter = Path.GetFileName(Name),
             };
             watcher.Deleted += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
             {
@@ -549,12 +599,10 @@ namespace DropTransfer
             {
                 if (e.ChangeType == WatcherChangeTypes.Renamed)
                 {
-                    Name = e.FullPath;
+                    setPath(e.FullPath);
                     RemoveIcon(e.OldFullPath);
                     CreateIcon(e.FullPath);
                     ImageKey = e.FullPath;
-                    updateDetail();
-                    watcher.Filter = Path.GetFileName(e.FullPath);
                 }
             });
             watcher.EnableRaisingEvents = true;
@@ -595,9 +643,32 @@ namespace DropTransfer
             }
         }
 
+        internal virtual void setPath(string path)
+        {
+            Name = path;
+            watcher.Path = Path.GetDirectoryName(Name);
+            watcher.Filter = Path.GetFileName(Name);
+            updateDetail();
+        }
+
         internal virtual void updateDetail()
         {
             Text = ShellInfoHelper.GetDisplayNameFromPath(Name);
+        }
+
+        public virtual bool FileSystemMoveTo(string target)
+        {
+            return false;
+        }
+
+        public void StopWatching()
+        {
+            watcher.EnableRaisingEvents = false;
+        }
+
+        public void StartWatching()
+        {
+            watcher.EnableRaisingEvents = true;
         }
     }
 
@@ -608,6 +679,45 @@ namespace DropTransfer
         {
             base.updateDetail();
             SubItems[2].Text = Directory.GetLastWriteTime(Name).ToString("yyyy/MM/dd hh:mm");
+        }
+
+        public override bool FileSystemMoveTo(string target)
+        {
+            target = Path.GetFullPath(target);
+            if (string.Equals(target, Path.GetFullPath(Name), StringComparison.OrdinalIgnoreCase)) return true;
+            watcher.EnableRaisingEvents = false;
+            if (File.Exists(target))
+            {
+                MessageBox.Show("指定的文件夹名与已存在的文件重名。请指定其他名称。", "重命名文件夹", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            DialogResult confirm = DialogResult.Yes;
+            if (Directory.Exists(target))
+            {
+                confirm = MessageBox.Show(
+$@"名为“{target}”的文件夹已存在。
+如果任何文件使用相同的名称，将会询问你是否要替换这些文件。
+你仍然将文件夹{Name}
+与文件夹{target}
+合并吗？",
+                    "确认文件夹替换",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                );
+            }
+            if (confirm != DialogResult.Yes) return false;
+            string source = Name;
+            List<ListViewFileSystemItem> items = ListView == null ? new List<ListViewFileSystemItem>() :
+                (ListView as BucketListView).Form.FileSystemItems.Where(
+                    item => item.Name == source || item.Name.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                ).ToList();
+            items.ForEach(item => item.StopWatching());
+            FileSystem.MoveDirectory(source, target, UIOption.AllDialogs, UICancelOption.DoNothing);
+            bool success = !Directory.Exists(source);
+            if (success)
+                items.ForEach(item => item.setPath(item.Name.Replace(source, target)));
+            items.ForEach(item => item.StartWatching());
+            return success;
         }
     }
 
@@ -622,6 +732,24 @@ namespace DropTransfer
             SubItems[2].Text = fileInfo.LastWriteTime.ToString("yyyy/MM/dd hh:mm");
             SubItems[3].Text = FileSizeHelper.GetHumanReadableFileSize(fileInfo.Length);
             SubItems[3].Tag = (long)fileInfo.Length;
+        }
+
+        public override bool FileSystemMoveTo(string target)
+        {
+            target = Path.GetFullPath(target);
+            if (string.Equals(target, Path.GetFullPath(Name), StringComparison.OrdinalIgnoreCase)) return true;
+            if (Directory.Exists(target))
+            {
+                MessageBox.Show("指定的文件名与已存在的文件夹重名。请指定其他名称。", "重命名文件", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+            StopWatching();
+            FileSystem.MoveFile(Name, target, UIOption.AllDialogs, UICancelOption.DoNothing);
+            bool success = !File.Exists(Name);
+            if (success)
+                setPath(target);
+            StartWatching();
+            return success;
         }
     }
 

@@ -66,4 +66,5 @@ And you will see stand alone executable file in `bin\Publish\DropTransfer.exe`
 | `Ctrl + C`       | copy item                       |
 | `Ctrl + X`       | cut item                        |
 | `Ctrl + V`       | add clipboard item to list      |
+| `F2`             | start renaming item             |
 | `Delete`         | remove selected items from list |
