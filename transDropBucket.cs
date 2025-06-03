@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Timers;
@@ -316,7 +317,7 @@ namespace DropTransfer
             {
                 if (e.Button == MouseButtons.Right)
                 {
-                    if (FocusedItem != null && FocusedItem.Bounds.Contains(e.Location))
+                    if (SelectedItems.Count > 0)
                     {
                         List<string> paths = new List<string>();
                         foreach (ListViewItem item in SelectedItems)
@@ -344,22 +345,24 @@ namespace DropTransfer
             });
             MouseDoubleClick += new MouseEventHandler((object sender, MouseEventArgs e) =>
             {
-                ListViewItem item = FocusedItem;
                 if (e.Button == MouseButtons.Left)
                 {
-                    if (File.Exists(item.Name))
+                    foreach (ListViewItem item in SelectedItems)
                     {
-                        Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
-                    }
-                    else if (Directory.Exists(item.Name))
-                    {
-                        if (Properties.Settings.Default.UseNavigate)
-                        {
-                            ShellApplicationHelper.NavigateExplorerTo(item.Name);
-                        }
-                        else
+                        if (File.Exists(item.Name))
                         {
                             Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
+                        }
+                        else if (Directory.Exists(item.Name))
+                        {
+                            if (Properties.Settings.Default.UseNavigate)
+                            {
+                                ShellApplicationHelper.NavigateExplorerTo(item.Name);
+                            }
+                            else
+                            {
+                                Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
+                            }
                         }
                     }
                 }
@@ -380,6 +383,39 @@ namespace DropTransfer
                     columnSorter.Order = SortOrder.Ascending;
                 }
                 Sort();
+            });
+
+            ContextMenuStrip = new ContextMenuStrip()
+            {
+                DropShadowEnabled = false
+            };
+
+            ContextMenuStrip.Opening += new CancelEventHandler((object sender, CancelEventArgs e) =>
+            {
+                e.Cancel = SelectedItems.Count != 0;
+            });
+
+            ContextMenuStrip.Items.Add("全选").Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                foreach (ListViewItem item in Items)
+                {
+                    item.Checked = true;
+                    item.Selected = true;
+                }
+            });
+
+            ContextMenuStrip.Items.Add("打开勾选的文件").Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                foreach (ListViewItem item in CheckedItems)
+                {
+                    Process.Start(new ProcessStartInfo(item.Name) { UseShellExecute = true });
+                }
+            });
+
+            ContextMenuStrip.Items.Add("移除勾选的文件").Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                foreach (ListViewItem item in CheckedItems)
+                    item.Remove();
             });
         }
 
@@ -768,81 +804,7 @@ $@"名为“{target}”的文件夹已存在。
                 Dock = DockStyle.Fill
             };
             Controls.Add(BucketListView);
-            ContextMenuStrip = new ContextMenuStrip()
-            {
-                DropShadowEnabled = false
-            };
 
-            ContextMenuStrip.Items.Add("全选").Click += new EventHandler((object sender, EventArgs e) =>
-            {
-                foreach (ListViewItem item in BucketItems)
-                {
-                    item.Checked = true;
-                    item.Selected = true;
-                }
-            });
-
-            ContextMenuStrip.Items.Add("移除选中").Click += new EventHandler((object sender, EventArgs e) =>
-            {
-                foreach (ListViewItem item in BucketListView.CheckedItems)
-                    item.Remove();
-            });
-
-            ToolStripMenuItem dragEffectMenu = (ToolStripMenuItem)ContextMenuStrip.Items.Add("拖放模式");
-            dragEffectMenu.DropDown.DropShadowEnabled = false;
-            foreach (var kv in Consts.dragEffectDict)
-            {
-                ToolStripItem item = dragEffectMenu.DropDown.Items.Add(kv.Value);
-                item.Click += new EventHandler((object sender, EventArgs e) =>
-                 {
-                     foreach (ToolStripMenuItem i in dragEffectMenu.DropDown.Items)
-                     {
-                         i.Checked = false;
-                     }
-                     ((ToolStripMenuItem)sender).Checked = true;
-                     Properties.Settings.Default.DragEffect = kv.Key;
-                 });
-                if (kv.Key == Properties.Settings.Default.DragEffect)
-                {
-                    ((ToolStripMenuItem)item).Checked = true;
-                }
-            }
-
-            ToolStripItem navigateItem = ContextMenuStrip.Items.Add("跳转已打开的资源管理器");
-            ((ToolStripMenuItem)navigateItem).Checked = Properties.Settings.Default.UseNavigate;
-            navigateItem.Click += new EventHandler((object sender, EventArgs e) =>
-            {
-                Properties.Settings.Default.UseNavigate = !Properties.Settings.Default.UseNavigate;
-                ((ToolStripMenuItem)sender).Checked = Properties.Settings.Default.UseNavigate;
-            });
-
-            ToolStripItem thumbnailItem = ContextMenuStrip.Items.Add("图片文件显示缩略图");
-            ((ToolStripMenuItem)thumbnailItem).Checked = Properties.Settings.Default.UseThumbnail;
-            thumbnailItem.Click += new EventHandler((object sender, EventArgs e) =>
-            {
-                Form.UseThumbnail = !Form.UseThumbnail;
-                ((ToolStripMenuItem)sender).Checked = Form.UseThumbnail;
-            });
-
-            ToolStripMenuItem iconSizeMenu = (ToolStripMenuItem)ContextMenuStrip.Items.Add("图标/缩略图大小");
-            iconSizeMenu.DropDown.DropShadowEnabled = false;
-            foreach (int size in new int[] { 16, 32, 64, 128 })
-            {
-                ToolStripItem item = iconSizeMenu.DropDown.Items.Add(size + "x" + size);
-                item.Click += new EventHandler((object sender, EventArgs e) =>
-                {
-                    foreach (ToolStripMenuItem i in iconSizeMenu.DropDown.Items)
-                    {
-                        i.Checked = false;
-                    }
-                    ((ToolStripMenuItem)sender).Checked = true;
-                    Form.IconSize = size;
-                });
-                if (size == Properties.Settings.Default.IconSize)
-                {
-                    ((ToolStripMenuItem)item).Checked = true;
-                }
-            }
         }
 
         public void SetName(string name)
@@ -863,6 +825,11 @@ $@"名为“{target}”的文件夹已存在。
             Text = "+"
         };
         private ContextMenuStrip tpCtxMnu = new ContextMenuStrip()
+        {
+            DropShadowEnabled = false
+        };
+
+        private ContextMenuStrip settingCtxMnu = new ContextMenuStrip()
         {
             DropShadowEnabled = false
         };
@@ -893,6 +860,62 @@ $@"名为“{target}”的文件夹已存在。
                 BucketTabPage tp = SelectedTab as BucketTabPage;
                 tp.BucketListView.Refresh();
             });
+
+            ToolStripMenuItem dragEffectMenu = (ToolStripMenuItem)settingCtxMnu.Items.Add("拖放模式");
+            dragEffectMenu.DropDown.DropShadowEnabled = false;
+            foreach (var kv in Consts.dragEffectDict)
+            {
+                ToolStripItem item = dragEffectMenu.DropDown.Items.Add(kv.Value);
+                item.Click += new EventHandler((object sender, EventArgs e) =>
+                 {
+                     foreach (ToolStripMenuItem i in dragEffectMenu.DropDown.Items)
+                     {
+                         i.Checked = false;
+                     }
+                     ((ToolStripMenuItem)sender).Checked = true;
+                     Properties.Settings.Default.DragEffect = kv.Key;
+                 });
+                if (kv.Key == Properties.Settings.Default.DragEffect)
+                {
+                    ((ToolStripMenuItem)item).Checked = true;
+                }
+            }
+
+            ToolStripItem navigateItem = settingCtxMnu.Items.Add("跳转已打开的资源管理器");
+            ((ToolStripMenuItem)navigateItem).Checked = Properties.Settings.Default.UseNavigate;
+            navigateItem.Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                Properties.Settings.Default.UseNavigate = !Properties.Settings.Default.UseNavigate;
+                ((ToolStripMenuItem)sender).Checked = Properties.Settings.Default.UseNavigate;
+            });
+
+            ToolStripItem thumbnailItem = settingCtxMnu.Items.Add("图片文件显示缩略图");
+            ((ToolStripMenuItem)thumbnailItem).Checked = Properties.Settings.Default.UseThumbnail;
+            thumbnailItem.Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                Form.UseThumbnail = !Form.UseThumbnail;
+                ((ToolStripMenuItem)sender).Checked = Form.UseThumbnail;
+            });
+
+            ToolStripMenuItem iconSizeMenu = (ToolStripMenuItem)settingCtxMnu.Items.Add("图标/缩略图大小");
+            iconSizeMenu.DropDown.DropShadowEnabled = false;
+            foreach (int size in new int[] { 16, 32, 64, 128 })
+            {
+                ToolStripItem item = iconSizeMenu.DropDown.Items.Add(size + "x" + size);
+                item.Click += new EventHandler((object sender, EventArgs e) =>
+                {
+                    foreach (ToolStripMenuItem i in iconSizeMenu.DropDown.Items)
+                    {
+                        i.Checked = false;
+                    }
+                    ((ToolStripMenuItem)sender).Checked = true;
+                    Form.IconSize = size;
+                });
+                if (size == Properties.Settings.Default.IconSize)
+                {
+                    ((ToolStripMenuItem)item).Checked = true;
+                }
+            }
 
             tpCtxMnu.Items.Add("新建页").Click += new EventHandler((object sender, EventArgs e) =>
             {
@@ -959,10 +982,17 @@ $@"名为“{target}”的文件夹已存在。
                 BucketTabPage tp = PointedTab as BucketTabPage;
                 if (e.Button == MouseButtons.Right)
                 {
-                    if (tp != null && tp != tpPlus)
+                    if (tp != null)
                     {
-                        contextTab = tp;
-                        tpCtxMnu.Show(this, e.Location);
+                        if (tp != tpPlus)
+                        {
+                            contextTab = tp;
+                            tpCtxMnu.Show(this, e.Location);
+                        }
+                        else
+                        {
+                            settingCtxMnu.Show(this, e.Location);
+                        }
                     }
                 }
             });
