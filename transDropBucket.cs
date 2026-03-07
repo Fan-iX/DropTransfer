@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Reflection;
-using System.Timers;
 using Microsoft.VisualBasic.FileIO;
 using ShellApp;
 
@@ -205,7 +204,7 @@ namespace DropTransfer
     public class BucketListView : ListViewWithoutHorizontalScrollBar
     {
         public transDropBucket Form { get => FindForm() as transDropBucket; }
-        public System.Timers.Timer updateDebounceTimer;
+        public Timer updateDebounceTimer;
         public bool Updating = false;
         public void StartUpdate()
         {
@@ -229,10 +228,9 @@ namespace DropTransfer
 
         public BucketListView()
         {
-            updateDebounceTimer = new System.Timers.Timer()
+            updateDebounceTimer = new Timer()
             {
-                Interval = 100,
-                AutoReset = false
+                Interval = 100
             };
             AllowDrop = true;
             CheckBoxes = true;
@@ -449,8 +447,9 @@ namespace DropTransfer
                     item.Remove();
             });
 
-            updateDebounceTimer.Elapsed += new ElapsedEventHandler((object sender, ElapsedEventArgs e) =>
+            updateDebounceTimer.Tick += new EventHandler((object sender, EventArgs e) =>
             {
+                updateDebounceTimer.Stop();
                 StopUpdate();
             });
         }
