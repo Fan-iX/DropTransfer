@@ -21,10 +21,6 @@ namespace DropTransfer
         public static ShellContextMenu ctxMnu = new ShellContextMenu();
         public static ImageList imgList = new ImageList();
         public static DateTime lastLayoutLock = new DateTime(0);
-        public static System.Timers.Timer layoutLockTimer = new System.Timers.Timer()
-        {
-            Interval = 100
-        };
     }
 
     public class Consts
@@ -93,11 +89,20 @@ namespace DropTransfer
             Properties.Settings.Default.UnfoldedSize = new Size(ClientSize.Width, Math.Max(UnfoldedSize.Height, 150 * DpiScale));
             Properties.Settings.Default.WindowLocation = Location;
             Properties.Settings.Default.Save();
+            try
+            {
+                foreach (Image img in Global.imgList.Images.Cast<Image>().ToArray())
+                    img.Dispose();
+                Global.imgList.Dispose();
+            }
+            catch { }
             base.OnFormClosing(e);
         }
 
         private void ResizeControl()
         {
+            foreach (Image img in Global.imgList.Images.Cast<Image>().ToArray())
+                img.Dispose();
             Global.imgList.Images.Clear();
             foreach (BucketTabPage tp in tc.TabPages)
             {
@@ -200,9 +205,35 @@ namespace DropTransfer
     public class BucketListView : ListViewWithoutHorizontalScrollBar
     {
         public transDropBucket Form { get => FindForm() as transDropBucket; }
+        public System.Timers.Timer updateDebounceTimer;
+        public bool Updating = false;
+        public void StartUpdate()
+        {
+            if (Updating)
+            {
+                updateDebounceTimer.Stop();
+                updateDebounceTimer.Start();
+            }
+            else
+            {
+                Updating = true;
+                BeginUpdate();
+                updateDebounceTimer.Start();
+            }
+        }
+        public void StopUpdate()
+        {
+            if (Updating) EndUpdate();
+            Updating = false;
+        }
 
         public BucketListView()
         {
+            updateDebounceTimer = new System.Timers.Timer()
+            {
+                Interval = 100,
+                AutoReset = false
+            };
             AllowDrop = true;
             CheckBoxes = true;
             LabelEdit = true;
@@ -417,6 +448,11 @@ namespace DropTransfer
                 foreach (ListViewItem item in CheckedItems)
                     item.Remove();
             });
+
+            updateDebounceTimer.Elapsed += new ElapsedEventHandler((object sender, ElapsedEventArgs e) =>
+            {
+                StopUpdate();
+            });
         }
 
         override public void Refresh()
@@ -546,6 +582,16 @@ namespace DropTransfer
                 File.Exists(x) ? new ListViewFileItem(x) as ListViewItem : null).ToArray();
             InsertItemsAfter(anchor, items);
         }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                updateDebounceTimer.Stop();
+                updateDebounceTimer.Dispose();
+            }
+            base.Dispose(disposing);
+        }
     }
 
     public class FileListViewColumnSorter : IComparer
@@ -611,34 +657,29 @@ namespace DropTransfer
             watcher.Deleted += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
             {
                 BucketListView lv = ListView as BucketListView;
-                if (!lv.Updating)
+                lv.BeginInvoke(new Action(() =>
                 {
-                    lv.StartUpdate();
-                    ElapsedEventHandler evh = null;
-                    evh = new ElapsedEventHandler((object s, ElapsedEventArgs ev) =>
-                    {
-                        Global.layoutLockTimer.Elapsed -= evh;
-                        lv.StopUpdate();
-                        Global.layoutLockTimer.Stop();
-                    });
-                    Global.layoutLockTimer.Elapsed += evh;
-                }
-                Remove();
-                Global.layoutLockTimer.Stop();
-                Global.layoutLockTimer.Start();
+                    if (lv != null) lv.StartUpdate();
+                    Remove();
+                }));
             });
             watcher.Changed += new FileSystemEventHandler((object sender, FileSystemEventArgs e) =>
             {
-                updateDetail();
+                BucketListView lv = ListView as BucketListView;
+                lv.BeginInvoke(new Action(() => updateDetail()));
             });
             watcher.Renamed += new RenamedEventHandler((object sender, RenamedEventArgs e) =>
             {
                 if (e.ChangeType == WatcherChangeTypes.Renamed)
                 {
-                    setPath(e.FullPath);
-                    RemoveIcon(e.OldFullPath);
-                    CreateIcon(e.FullPath);
-                    ImageKey = e.FullPath;
+                    BucketListView lv = ListView as BucketListView;
+                    lv.BeginInvoke(new Action(() =>
+                    {
+                        setPath(e.FullPath);
+                        RemoveIcon(e.OldFullPath);
+                        CreateIcon(e.FullPath);
+                        ImageKey = e.FullPath;
+                    }));
                 }
             });
             watcher.EnableRaisingEvents = true;
