@@ -692,9 +692,17 @@ namespace DropTransfer
             {
                 if (Properties.Settings.Default.UseThumbnail && File.Exists(path) && Consts.imageExts.Contains(Path.GetExtension(path).ToLower()))
                 {
-                    Image img = Image.FromFile(path);
-                    Global.imgList.Images.Add(path, img.GetThumbnailImage(128, 128, () => false, IntPtr.Zero));
-                    img.Dispose();
+                    try
+                    {
+                        using (Image img = Image.FromFile(path))
+                        {
+                            Global.imgList.Images.Add(path, img.GetThumbnailImage(128, 128, () => false, IntPtr.Zero));
+                        }
+                    }
+                    catch
+                    {
+                        Global.imgList.Images.Add(path, ShellInfoHelper.GetIconFromPath(path, Properties.Settings.Default.IconSize == 16));
+                    }
                 }
                 else
                     Global.imgList.Images.Add(path, ShellInfoHelper.GetIconFromPath(path, Properties.Settings.Default.IconSize == 16));
