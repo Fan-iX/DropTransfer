@@ -1,0 +1,31 @@
+name: Build and Publish Release
+
+on:
+  push:
+    tags:
+      - "**"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet Packages
+        run: msbuild -t:Restore
+
+      - name: Build and Publish
+        run: msbuild DropTransfer.csproj /p:Configuration=Release /p:OutputPath=./bin/Publish
+
+      - name: Create Release and Upload Assets
+        shell: pwsh
+        run: gh release create ${{ github.ref_name }} ./bin/Publish/DropTransfer.exe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
