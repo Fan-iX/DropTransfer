@@ -1,4 +1,4 @@
-# miniExploer
+# DropTransfer
 
 A file/folder drag transfer bucket based on .net framework winforms
 
