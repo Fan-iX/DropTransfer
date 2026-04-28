@@ -208,17 +208,9 @@ namespace DropTransfer
         public bool Updating = false;
         public void StartUpdate()
         {
-            if (Updating)
-            {
-                updateDebounceTimer.Stop();
-                updateDebounceTimer.Start();
-            }
-            else
-            {
-                Updating = true;
-                BeginUpdate();
-                updateDebounceTimer.Start();
-            }
+            if (!Updating) BeginUpdate();
+            Updating = true;
+            updateDebounceTimer.Start();
         }
         public void StopUpdate()
         {
@@ -228,10 +220,7 @@ namespace DropTransfer
 
         public BucketListView()
         {
-            updateDebounceTimer = new Timer()
-            {
-                Interval = 100
-            };
+            updateDebounceTimer = new Timer() { Interval = 100 };
             AllowDrop = true;
             CheckBoxes = true;
             LabelEdit = true;
@@ -319,16 +308,27 @@ namespace DropTransfer
                 }
                 else if (e.Control && (e.KeyCode == Keys.C || e.KeyCode == Keys.X))
                 {
-                    StringCollection dropList = new StringCollection();
-                    foreach (ListViewItem item in SelectedItems)
-                        dropList.Add(item.Name);
-                    DataObject data = new DataObject();
-                    data.SetFileDropList(dropList);
-                    Clipboard.SetDataObject(data);
+                    if (SelectedItems.Count > 0)
+                    {
+                        StringCollection dropList = new StringCollection();
+                        foreach (ListViewItem item in SelectedItems)
+                            dropList.Add(item.Name);
+                        DataObject data = new DataObject();
+                        data.SetFileDropList(dropList);
+                        Clipboard.SetDataObject(data);
+                    }
                     if (e.KeyCode == Keys.X)
                     {
                         foreach (ListViewItem item in SelectedItems)
                             item.Remove();
+                    }
+                }
+                else if (e.KeyCode == Keys.Escape)
+                {
+                    foreach (ListViewItem item in Items)
+                    {
+                        item.Checked = false;
+                        item.Selected = false;
                     }
                 }
                 else if (e.KeyCode == Keys.Delete)
@@ -433,6 +433,15 @@ namespace DropTransfer
                 }
             });
 
+            ContextMenuStrip.Items.Add("全不选").Click += new EventHandler((object sender, EventArgs e) =>
+            {
+                foreach (ListViewItem item in Items)
+                {
+                    item.Checked = false;
+                    item.Selected = false;
+                }
+            });
+
             ContextMenuStrip.Items.Add("打开勾选的文件").Click += new EventHandler((object sender, EventArgs e) =>
             {
                 foreach (ListViewItem item in CheckedItems)
@@ -441,7 +450,7 @@ namespace DropTransfer
                 }
             });
 
-            ContextMenuStrip.Items.Add("移除勾选的文件").Click += new EventHandler((object sender, EventArgs e) =>
+            ContextMenuStrip.Items.Add("将勾选的文件移出中转站").Click += new EventHandler((object sender, EventArgs e) =>
             {
                 foreach (ListViewItem item in CheckedItems)
                     item.Remove();
@@ -973,10 +982,13 @@ $@"名为“{target}”的文件夹已存在。
             });
             tpCtxMnu.Items.Add("删除页").Click += new EventHandler((object sender, EventArgs e) =>
             {
+                if (TabPages.Count == 2)
+                    TabPages.Insert(0, new BucketTabPage());
                 if (contextTab == SelectedTab)
                 {
-                    int index = TabPages.IndexOf(contextTab) - 1;
-                    if (index < 0) index = 0;
+                    int index = TabPages.IndexOf(contextTab) + 1;
+                    if (index == TabPages.Count - 1)
+                        index = TabPages.Count - 3;
                     SelectedTab = TabPages[index];
                 }
                 TabPages.Remove(contextTab);
