@@ -1036,6 +1036,65 @@ $@"名为“{target}”的文件夹已存在。
                     }
                 }
             });
+            KeyDown += new KeyEventHandler((object sender, KeyEventArgs e) =>
+            {
+                if (Focused && e.Control && e.KeyCode == Keys.C || e.KeyCode == Keys.X)
+                {
+                    BucketTabPage tp = SelectedTab as BucketTabPage;
+                    if (tp.BucketListView.Items.Count > 0)
+                    {
+                        StringCollection dropList = new StringCollection();
+                        foreach (ListViewItem item in tp.BucketListView.Items)
+                            dropList.Add(item.Name);
+                        DataObject data = new DataObject();
+                        data.SetFileDropList(dropList);
+                        Clipboard.SetDataObject(data);
+                    }
+                    if (e.KeyCode == Keys.X)
+                    {
+                        TabPage p = SelectedTab;
+                        if (TabPages.Count == 2)
+                            TabPages.Insert(0, new BucketTabPage());
+                        int index = TabPages.IndexOf(p) + 1;
+                        if (index == TabPages.Count - 1)
+                            index = TabPages.Count - 3;
+                        SelectedTab = TabPages[index];
+                        TabPages.Remove(p);
+                    }
+                }
+                else if (Focused && e.KeyCode == Keys.Delete)
+                {
+                    BucketTabPage tp = SelectedTab as BucketTabPage;
+                    if (tp != tpPlus)
+                    {
+                        if (TabPages.Count == 2)
+                            TabPages.Insert(0, new BucketTabPage());
+                        int index = TabPages.IndexOf(tp) + 1;
+                        if (index == TabPages.Count - 1)
+                            index = TabPages.Count - 3;
+                        SelectedTab = TabPages[index];
+                        TabPages.Remove(tp);
+                    }
+                }
+                else if (Focused && e.KeyCode == Keys.F2)
+                {
+                    BucketTabPage tp = SelectedTab as BucketTabPage;
+                    if (tp != null && tp != tpPlus)
+                    {
+                        Rectangle rect = GetTabRect(TabPages.IndexOf(tp));
+                        OneTimeTextBox tb = new OneTimeTextBox()
+                        {
+                            Text = tp.Name,
+                            Location = new Point(rect.X + 2, rect.Y),
+                            Size = new Size(TextRenderer.MeasureText(tp.Text, Font).Width, rect.Height)
+                        };
+                        tb.DisposeAction = () => tp.SetName(tb.Text);
+                        Form.Controls.Add(tb);
+                        tb.BringToFront();
+                        tb.Focus();
+                    }
+                }
+            });
 
             MouseClick += new MouseEventHandler((object sender, MouseEventArgs e) =>
             {
